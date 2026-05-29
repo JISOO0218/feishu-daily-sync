@@ -15,7 +15,6 @@ tz = timezone(timedelta(hours=8))
 now = datetime.now(tz)
 yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
-# 获取 token
 r = requests.post(
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
     json={"app_id": APP_ID, "app_secret": APP_SECRET}
@@ -23,7 +22,6 @@ r = requests.post(
 access_token = r.json()["tenant_access_token"]
 headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-# 从永封&解封报警群拉取消息
 all_items = []
 page_token = ""
 while True:
@@ -42,7 +40,6 @@ while True:
         break
     page_token = resp["data"]["page_token"]
 
-# 筛选昨天因广告被永封的记录
 records = []
 for item in all_items:
     ts = int(item["create_time"]) / 1000
@@ -64,9 +61,7 @@ for item in all_items:
 records.sort(key=lambda x: x[0])
 print(f"昨日({yesterday})因广告永封: {len(records)} 条")
 
-# 写入飞书表格
 if records:
-    # 找到表格最后一行有数据的位置
     resp = requests.get(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A1000",
         headers=headers
@@ -78,7 +73,6 @@ if records:
             last_row = i + 2
     next_row = last_row + 1
 
-    # 写入数据
     range_str = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
     resp = requests.put(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values",
@@ -87,7 +81,6 @@ if records:
     )
     print(f"写入表格: {resp.json().get('msg')}")
 
-    # 设置新写入行居中对齐
     style_range = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
     requests.put(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/style",
@@ -95,14 +88,14 @@ if records:
         json={"appendStyle": {"range": style_range, "style": {"hAlign": 1}}}
     )
 
-# 发送通知到世界杯群
+finish_time = now.strftime("%Y-%m-%d %H:%M:%S")
 post_content = {
     "zh_cn": {
         "title": "✅ 广告永封同步任务完成",
         "content": [
             [{"tag": "text", "text": f"数据日期：{yesterday}\n"}],
             [{"tag": "text", "text": f"同步条数：{len(records)} 条\n"}],
-            [{"tag": "text", "text": f"完成时间：{now.strftime(\"%Y-%m-%d %H:%M:%S\")}\n"}],
+            [{"tag": "text", "text": f"完成时间：{finish_time}\n"}],
             [{"tag": "text", "text": "查看文档："}, {"tag": "a", "text": "点击跳转飞书文档", "href": DOC_URL}]
         ]
     }
