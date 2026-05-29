@@ -8,7 +8,6 @@ APP_SECRET = os.environ["FEISHU_APP_SECRET"]
 CHAT_ID = "oc_8986e681faa16d91676aaff14a9ecd61"
 SHEET_TOKEN = "KQfwsq9FwhCpxBtvLNWcJOhnn3e"
 SHEET_ID = "e373f2"
-DOC_URL = "https://iairnznqr8.feishu.cn/wiki/TgsTwqh4ZiP3qFkxhqWcx2uCnN2"
 
 tz = timezone(timedelta(hours=8))
 now = datetime.now(tz)
@@ -28,25 +27,27 @@ resp = requests.get(
 rows = resp.json()["data"]["valueRange"]["values"]
 records = [r for r in rows if r and r[0] and str(r[0]).startswith(yesterday)]
 
-lines = [[
-    {"tag": "text", "text": f"{'封禁时间':^25}{'用户名':^20}{'用户主页地址':^30}
-"}
-]]
+W1, W2, W3 = 20, 16, 36
+header = f"{'封禁时间':^{W1}}{'用户名':^{W2}}{'用户主页地址':^{W3}}"
+sep = "─" * (W1 + W2 + W3)
+
+lines = [[{"tag": "text", "text": f"{header}\n{sep}\n"}]]
+
 if records:
     for rec in records:
         t = str(rec[0]) if len(rec) > 0 and rec[0] else ""
         u = str(rec[1]) if len(rec) > 1 and rec[1] else ""
-        link = str(rec[2]) if len(rec) > 2 and rec[2] else ""
+        link = rec[2][0]["link"] if len(rec) > 2 and isinstance(rec[2], list) and rec[2] else ""
         lines.append([
-            {"tag": "text", "text": f"{t:^25}{u:^20}"},
-            {"tag": "a", "text": f"{link:^30}", "href": link}
+            {"tag": "text", "text": f"{t:^{W1}}{u:^{W2}}"},
+            {"tag": "a", "text": f"{'点击查看':^{W3}}", "href": link}
         ])
 else:
     lines.append([{"tag": "text", "text": "昨日暂无永封记录"}])
 
 content_body = {
     "zh_cn": {
-        "title": f"✅ {yesterday} 广告永封同步完成",
+        "title": f"✅ {yesterday} 广告永封同步完成（共 {len(records)} 条）",
         "content": lines
     }
 }
