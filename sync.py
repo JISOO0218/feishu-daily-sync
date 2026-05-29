@@ -6,59 +6,111 @@ from datetime import datetime, timedelta, timezone
 APP_ID = os.environ["FEISHU_APP_ID"]
 APP_SECRET = os.environ["FEISHU_APP_SECRET"]
 CHAT_ID = "oc_8986e681faa16d91676aaff14a9ecd61"
+SOURCE_CHAT_ID = "oc_770b3e4347e43cabd389f545a7980f4b"
 SHEET_TOKEN = "KQfwsq9FwhCpxBtvLNWcJOhnn3e"
 SHEET_ID = "e373f2"
+DOC_URL = "https://iairnznqr8.feishu.cn/wiki/TgsTwqh4ZiP3qFkxhqWcx2uCnN2"
 
 tz = timezone(timedelta(hours=8))
 now = datetime.now(tz)
 yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
+# 获取 token
 r = requests.post(
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
     json={"app_id": APP_ID, "app_secret": APP_SECRET}
 )
-token = r.json()["tenant_access_token"]
-headers = {"Authorization": f"Bearer {token}"}
+access_token = r.json()["tenant_access_token"]
+headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-resp = requests.get(
-    f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:C1000",
-    headers=headers
-)
-rows = resp.json()["data"]["valueRange"]["values"]
-records = [r for r in rows if r and r[0] and str(r[0]).startswith(yesterday)]
+# 从永封&解封报警群拉取消息
+all_items = []
+page_token = ""
+while True:
+    url = f"https://open.feishu.cn/open-apis/im/v1/messages?container_id_type=chat&container_id={SOURCE_CHAT_ID}&page_size=50&sort_type=ByCreateTimeDesc"
+    if page_token:
+        url += f"&page_token={page_token}"
+    resp = requests.get(url, headers=headers).json()
+    items = resp.get("data", {}).get("items", [])
+    all_items.extend(items)
+    if items:
+        last_ts = int(items[-1]["create_time"]) / 1000
+        last_dt = datetime.fromtimestamp(last_ts, tz)
+        if last_dt.strftime("%Y-%m-%d") < yesterday:
+            break
+    if not resp.get("data", {}).get("has_more"):
+        break
+    page_token = resp["data"]["page_token"]
 
-W1, W2, W3 = 20, 16, 36
-header = f"{'封禁时间':^{W1}}{'用户名':^{W2}}{'用户主页地址':^{W3}}"
-sep = "─" * (W1 + W2 + W3)
+# 筛选昨天因广告被永封的记录
+records = []
+for item in all_items:
+    ts = int(item["create_time"]) / 1000
+    dt = datetime.fromtimestamp(ts, tz)
+    if dt.strftime("%Y-%m-%d") != yesterday:
+        continue
+    content = json.loads(item.get("body", {}).get("content", "{}"))
+    text = content.get("text", "")
+    if "永封报警" in text and "命中策略：发布广告" in text:
+        username = ""
+        user_url = ""
+        for line in text.split("\n"):
+            if line.startswith("用户名："):
+                username = line.replace("用户名：", "")
+            if line.startswith("用户主页地址："):
+                user_url = line.replace("用户主页地址：", "")
+        records.append([dt.strftime("%Y-%m-%d %H:%M:%S"), username, user_url])
 
-lines = [[{"tag": "text", "text": f"{header}\n{sep}\n"}]]
+records.sort(key=lambda x: x[0])
+print(f"昨日({yesterday})因广告永封: {len(records)} 条")
 
+# 写入飞书表格
 if records:
-    for rec in records:
-        t = str(rec[0]) if len(rec) > 0 and rec[0] else ""
-        u = str(rec[1]) if len(rec) > 1 and rec[1] else ""
-        link = rec[2][0]["link"] if len(rec) > 2 and isinstance(rec[2], list) and rec[2] else ""
-        lines.append([
-            {"tag": "text", "text": f"{t:^{W1}}{u:^{W2}}"},
-            {"tag": "a", "text": f"{'点击查看':^{W3}}", "href": link}
-        ])
-else:
-    lines.append([{"tag": "text", "text": "昨日暂无永封记录"}])
+    # 找到表格最后一行有数据的位置
+    resp = requests.get(
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A1000",
+        headers=headers
+    )
+    rows = resp.json()["data"]["valueRange"]["values"]
+    last_row = 1
+    for i, r in enumerate(rows):
+        if r and r[0]:
+            last_row = i + 2
+    next_row = last_row + 1
 
-content_body = {
+    # 写入数据
+    range_str = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
+    resp = requests.put(
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values",
+        headers=headers,
+        json={"valueRange": {"range": range_str, "values": records}}
+    )
+    print(f"写入表格: {resp.json().get('msg')}")
+
+    # 设置新写入行居中对齐
+    style_range = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
+    requests.put(
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/style",
+        headers=headers,
+        json={"appendStyle": {"range": style_range, "style": {"hAlign": 1}}}
+    )
+
+# 发送通知到世界杯群
+post_content = {
     "zh_cn": {
-        "title": f"✅ {yesterday} 广告永封同步完成（共 {len(records)} 条）",
-        "content": lines
+        "title": "✅ 广告永封同步任务完成",
+        "content": [
+            [{"tag": "text", "text": f"数据日期：{yesterday}\n"}],
+            [{"tag": "text", "text": f"同步条数：{len(records)} 条\n"}],
+            [{"tag": "text", "text": f"完成时间：{now.strftime(\"%Y-%m-%d %H:%M:%S\")}\n"}],
+            [{"tag": "text", "text": "查看文档："}, {"tag": "a", "text": "点击跳转飞书文档", "href": DOC_URL}]
+        ]
     }
 }
 
-requests.post(
+resp = requests.post(
     "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
     headers=headers,
-    json={
-        "receive_id": CHAT_ID,
-        "msg_type": "post",
-        "content": json.dumps({"post": content_body})
-    }
+    json={"receive_id": CHAT_ID, "msg_type": "post", "content": json.dumps(post_content)}
 )
-print(f"发送成功，共 {len(records)} 条记录")
+print(f"通知发送: {resp.json().get('msg')}")
