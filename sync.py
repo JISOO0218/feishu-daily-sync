@@ -5,7 +5,10 @@ from datetime import datetime, timedelta, timezone
 
 APP_ID = os.environ["FEISHU_APP_ID"]
 APP_SECRET = os.environ["FEISHU_APP_SECRET"]
-CHAT_ID = "oc_8986e681faa16d91676aaff14a9ecd61"
+CHAT_IDS = [
+    "oc_8986e681faa16d91676aaff14a9ecd61",
+    "oc_6522503b874f4ec811241613e24f06b0",
+]
 SOURCE_CHAT_ID = "oc_770b3e4347e43cabd389f545a7980f4b"
 SHEET_TOKEN = "KQfwsq9FwhCpxBtvLNWcJOhnn3e"
 SHEET_ID = "e373f2"
@@ -74,19 +77,17 @@ if records:
     next_row = last_row + 1
 
     range_str = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
-    resp = requests.put(
+    requests.put(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values",
         headers=headers,
         json={"valueRange": {"range": range_str, "values": records}}
     )
-    print(f"写入表格: {resp.json().get('msg')}")
-
-    style_range = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
     requests.put(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/style",
         headers=headers,
-        json={"appendStyle": {"range": style_range, "style": {"hAlign": 1}}}
+        json={"appendStyle": {"range": f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}", "style": {"hAlign": 1}}}
     )
+    print(f"写入表格成功")
 
 finish_time = now.strftime("%Y-%m-%d %H:%M:%S")
 post_content = {
@@ -101,9 +102,10 @@ post_content = {
     }
 }
 
-resp = requests.post(
-    "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
-    headers=headers,
-    json={"receive_id": CHAT_ID, "msg_type": "post", "content": json.dumps(post_content)}
-)
-print(f"通知发送: {resp.json().get('msg')}")
+for chat_id in CHAT_IDS:
+    resp = requests.post(
+        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+        headers=headers,
+        json={"receive_id": chat_id, "msg_type": "post", "content": json.dumps(post_content)}
+    )
+    print(f"通知发送({chat_id[:20]}...): {resp.json().get('msg')}")
