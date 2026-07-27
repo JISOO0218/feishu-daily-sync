@@ -40,7 +40,7 @@ while True:
         url += f"&page_token={page_token}"
     resp = requests.get(url, headers=headers).json()
     if resp.get("code", 0) != 0:
-        print(f"[ERROR] 读取消息失败: code={resp.get(chr(39)code chr(39))}, msg={resp.get(chr(39)msg chr(39))}")
+        print(f"[ERROR] 读取消息失败: code={resp.get('code')}, msg={resp.get('msg')}")
         break
     items = resp.get("data", {}).get("items", [])
     page_count += 1
@@ -57,7 +57,7 @@ while True:
 
 print(f"[INFO] 共读取 {len(all_items)} 条消息")
 
-records_by_date = 
+records_by_date = {}
 for item in all_items:
     ts = int(item["create_time"]) / 1000
     dt = datetime.fromtimestamp(ts, tz)
@@ -69,8 +69,7 @@ for item in all_items:
     if "永封报警" in text and "命中策略：发布广告" in text:
         username = ""
         user_url = ""
-        for line in text.split("
-"):
+        for line in text.split("\n"):
             if line.startswith("用户名："):
                 username = line.replace("用户名：", "")
             if line.startswith("用户主页地址："):
