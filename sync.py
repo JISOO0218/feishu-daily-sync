@@ -17,23 +17,42 @@ DOC_URL = "https://iairnznqr8.feishu.cn/wiki/TgsTwqh4ZiP3qFkxhqWcx2uCnN2"
 tz = timezone(timedelta(hours=8))
 now = datetime.now(tz)
 yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+print(f"[INFO] 目标日期: {yesterday}")
 
 r = requests.post(
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
     json={"app_id": APP_ID, "app_secret": APP_SECRET}
 )
-access_token = r.json()["tenant_access_token"]
+token_data = r.json()
+if "tenant_access_token" not in token_data:
+    print(f"[ERROR] 获取token失败: {token_data}")
+    exit(1)
+access_token = token_data["tenant_access_token"]
 headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+print("[INFO] token获取成功")
 
 all_items = []
 page_token = ""
+page_count = 0
 while True:
-    url = f"https://open.feishu.cn/open-apis/im/v1/messages?container_id_type=chat&container_id={SOURCE_CHAT_ID}&page_size=50&sort_type=ByCreateTimeDesc"
+    url = (
+        f"https://open.feishu.cn/open-apis/im/v1/messages"
+        f"?container_id_type=chat&container_id={SOURCE_CHAT_ID}"
+        f"&page_size=50&sort_type=ByCreateTimeDesc"
+    )
     if page_token:
         url += f"&page_token={page_token}"
     resp = requests.get(url, headers=headers).json()
+
+    if resp.get("code", 0) != 0:
+        print(f"[ERROR] 读取消息失败: code={resp.get('code')}, msg={resp.get('msg')}")
+        break
+
     items = resp.get("data", {}).get("items", [])
+    page_count += 1
+    print(f"[INFO] 第{page_count}页: {len(items)} 条消息")
     all_items.extend(items)
+
     if items:
         last_ts = int(items[-1]["create_time"]) / 1000
         last_dt = datetime.fromtimestamp(last_ts, tz)
@@ -42,6 +61,8 @@ while True:
     if not resp.get("data", {}).get("has_more"):
         break
     page_token = resp["data"]["page_token"]
+
+print(f"[INFO] 共读取 {len(all_items)} 条消息")
 
 records = []
 for item in all_items:
@@ -62,32 +83,37 @@ for item in all_items:
         records.append([dt.strftime("%Y-%m-%d %H:%M:%S"), username, user_url])
 
 records.sort(key=lambda x: x[0])
-print(f"昨日({yesterday})因广告永封: {len(records)} 条")
+print(f"[INFO] 昨日({yesterday})因广告永封: {len(records)} 条")
 
 if records:
     resp = requests.get(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A1000",
         headers=headers
     )
-    rows = resp.json()["data"]["valueRange"]["values"]
+    sheet_data = resp.json()
+    if sheet_data.get("code", 0) != 0:
+        print(f"[ERROR] 读取表格失败: {sheet_data}")
+        exit(1)
+
+    rows = sheet_data.get("data", {}).get("valueRange", {}).get("values") or []
     last_row = 1
-    for i, r in enumerate(rows):
-        if r and r[0]:
+    for i, row in enumerate(rows):
+        if row and row[0]:
             last_row = i + 2
     next_row = last_row + 1
+    print(f"[INFO] 从第{next_row}行开始写入")
 
     range_str = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
-    requests.put(
+    write_resp = requests.put(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values",
         headers=headers,
         json={"valueRange": {"range": range_str, "values": records}}
     )
-    requests.put(
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/style",
-        headers=headers,
-        json={"appendStyle": {"range": f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}", "style": {"hAlign": 1}}}
-    )
-    print(f"写入表格成功")
+    write_data = write_resp.json()
+    if write_data.get("code", 0) != 0:
+        print(f"[ERROR] 写入表格失败: {write_data}")
+        exit(1)
+    print(f"[INFO] 写入表格成功，范围: {range_str}")
 
 finish_time = now.strftime("%Y-%m-%d %H:%M:%S")
 post_content = {
@@ -108,4 +134,4 @@ for chat_id in CHAT_IDS:
         headers=headers,
         json={"receive_id": chat_id, "msg_type": "post", "content": json.dumps(post_content)}
     )
-    print(f"通知发送({chat_id[:20]}...): {resp.json().get('msg')}")
+    print(f"[INFO] 通知发送({chat_id[:20]}...): {resp.json().get('msg')}")
