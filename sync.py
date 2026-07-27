@@ -87,7 +87,7 @@ print(f"[INFO] 昨日({yesterday})因广告永封: {len(records)} 条")
 
 if records:
     resp = requests.get(
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A1000",
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A9999",
         headers=headers
     )
     sheet_data = resp.json()
