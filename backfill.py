@@ -10,7 +10,7 @@ SHEET_TOKEN = "KQfwsq9FwhCpxBtvLNWcJOhnn3e"
 SHEET_ID = "e373f2"
 
 START_DATE = "2026-07-23"
-END_DATE = "2026-07-26"
+END_DATE = "2026-07-25"
 
 tz = timezone(timedelta(hours=8))
 print(f"[INFO] 回填日期范围: {START_DATE} 至 {END_DATE}")
@@ -40,7 +40,7 @@ while True:
         url += f"&page_token={page_token}"
     resp = requests.get(url, headers=headers).json()
     if resp.get("code", 0) != 0:
-        print(f"[ERROR] 读取消息失败: code={resp.get('code')}, msg={resp.get('msg')}")
+        print(f"[ERROR] 读取消息失败: code={resp.get(chr(39)code chr(39))}, msg={resp.get(chr(39)msg chr(39))}")
         break
     items = resp.get("data", {}).get("items", [])
     page_count += 1
@@ -57,7 +57,7 @@ while True:
 
 print(f"[INFO] 共读取 {len(all_items)} 条消息")
 
-records_by_date = {}
+records_by_date = 
 for item in all_items:
     ts = int(item["create_time"]) / 1000
     dt = datetime.fromtimestamp(ts, tz)
@@ -69,7 +69,8 @@ for item in all_items:
     if "永封报警" in text and "命中策略：发布广告" in text:
         username = ""
         user_url = ""
-        for line in text.split("\n"):
+        for line in text.split("
+"):
             if line.startswith("用户名："):
                 username = line.replace("用户名：", "")
             if line.startswith("用户主页地址："):
@@ -84,7 +85,7 @@ for date_str in sorted(records_by_date.keys()):
     if not records:
         continue
     resp = requests.get(
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A1000",
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A9999",
         headers=headers
     )
     sheet_data = resp.json()
@@ -97,6 +98,7 @@ for date_str in sorted(records_by_date.keys()):
         if row and row[0]:
             last_row = i + 2
     next_row = last_row + 1
+    print(f"[INFO] {date_str}: 当前最后行={last_row}, 写入起始行={next_row}")
     range_str = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
     write_resp = requests.put(
         f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values",
