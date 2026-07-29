@@ -95,7 +95,21 @@ if records:
     if write_data.get("code", 0) != 0:
         print(f"[ERROR] 写入表格失败: {write_data}")
         exit(1)
-    print(f"[INFO] 写入表格成功: {len(records)} 条")
+
+    updated_range = write_data.get("data", {}).get("updates", {}).get("updatedRange", "")
+    print(f"[INFO] 写入表格成功: {len(records)} 条，范围: {updated_range}")
+
+    if updated_range:
+        style_resp = requests.put(
+            f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/styles_batch_update",
+            headers=headers,
+            json={"data": [{"ranges": [updated_range], "style": {"hAlign": 2}}]}
+        )
+        style_data = style_resp.json()
+        if style_data.get("code", 0) != 0:
+            print(f"[WARN] 设置居中对齐失败: {style_data}")
+        else:
+            print(f"[INFO] 设置居中对齐成功")
 
 finish_time = now.strftime("%Y-%m-%d %H:%M:%S")
 post_content = {
