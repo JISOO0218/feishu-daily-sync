@@ -86,34 +86,16 @@ records.sort(key=lambda x: x[0])
 print(f"[INFO] 昨日({yesterday})因广告永封: {len(records)} 条")
 
 if records:
-    resp = requests.get(
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values/{SHEET_ID}!A2:A9999999",
-        headers=headers
-    )
-    sheet_data = resp.json()
-    if sheet_data.get("code", 0) != 0:
-        print(f"[ERROR] 读取表格失败: {sheet_data}")
-        exit(1)
-
-    rows = sheet_data.get("data", {}).get("valueRange", {}).get("values") or []
-    last_row = 1
-    for i, row in enumerate(rows):
-        if row and row[0]:
-            last_row = i + 2
-    next_row = last_row + 1
-    print(f"[INFO] 从第{next_row}行开始写入")
-
-    range_str = f"{SHEET_ID}!A{next_row}:C{next_row + len(records) - 1}"
-    write_resp = requests.put(
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values",
+    write_resp = requests.post(
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{SHEET_TOKEN}/values_append?insertDataOption=INSERT_ROWS",
         headers=headers,
-        json={"valueRange": {"range": range_str, "values": records}}
+        json={"valueRange": {"range": f"{SHEET_ID}!A:C", "values": records}}
     )
     write_data = write_resp.json()
     if write_data.get("code", 0) != 0:
         print(f"[ERROR] 写入表格失败: {write_data}")
         exit(1)
-    print(f"[INFO] 写入表格成功，范围: {range_str}")
+    print(f"[INFO] 写入表格成功: {len(records)} 条")
 
 finish_time = now.strftime("%Y-%m-%d %H:%M:%S")
 post_content = {
